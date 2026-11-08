@@ -1,0 +1,10 @@
+export const PLUGIN_NAME = 'superpowers-cc-native';
+export const UPSTREAM_PLUGIN_NAME = 'superpowers';
+export const UPSTREAM_URL = 'https://github.com/obra/superpowers.git';
+export const REPO_URL = 'https://github.com/Stashub/superpowers-cc-native';
+export const OWNER = { name: 'Stashub', url: 'https://github.com/Stashub' };
+export const IDENTITY = { name: 'Stashub', email: '64739874+Stashub@users.noreply.github.com' };
+export const DESCRIPTION_PREFIX = 'Claude Code native fork of obra/superpowers. ';
+export const UPSTREAM_BRANCH = 'upstream';
+export const OBRA_TAG_PREFIX = 'refs/obra/tags/';
+export const VERSION_RE = /^\d+\.\d+\.\d+-cc\.[1-9]\d*$/;
