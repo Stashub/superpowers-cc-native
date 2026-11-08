@@ -16,22 +16,31 @@ const describe = (kind, file, item) => {
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 // A failure is any error and any warning in `manifest` and `contents`, except the one above.
-// `advice` and `directory` are ignored. One ok finding if nothing fails. A report that is not
-// an object, has no `manifest` object, or says success: false without any finding of ours,
-// is a failure: this is a gate, and a shape we do not know must not pass. `contents` may be
-// absent or empty.
+// `advice` and `directory` are ignored. One ok finding if nothing fails. This is a gate, so a
+// shape we do not know must not pass: a report that is not an object, has no `manifest`
+// object, has a `contents` that is neither absent nor an array of objects, has `errors` or
+// `warnings` (when present) that are not arrays, or says success: false without any finding
+// of ours, is a failure. `contents` may be absent or empty.
 export function filterValidateReport(report) {
-  if (!isObject(report) || !isObject(report.manifest))
-    return [finding('fail', 'validate', 'unexpected report: it is not an object with a "manifest" object')];
+  const bad = (text) => [finding('fail', 'validate', `unexpected report: ${text}`)];
+  if (!isObject(report) || !isObject(report.manifest)) return bad('it is not an object with a "manifest" object');
+  const { contents = [] } = report;
+  if (!Array.isArray(contents) || !contents.every(isObject)) return bad('"contents" is not an array of objects');
+
   const findings = [];
-  const scan = (file, errors, warnings) => {
-    for (const e of errors ?? []) findings.push(finding('fail', 'validate', describe('error', file, e)));
-    for (const w of warnings ?? []) {
-      if (!isAllowed(w)) findings.push(finding('fail', 'validate', describe('warning', file, w)));
+  const scan = (where, entry) => {
+    for (const key of ['errors', 'warnings']) {
+      if (entry[key] !== undefined && !Array.isArray(entry[key])) return `"${key}" of ${where} is not an array`;
     }
+    for (const e of entry.errors ?? []) findings.push(finding('fail', 'validate', describe('error', entry.file, e)));
+    for (const w of entry.warnings ?? []) {
+      if (!isAllowed(w)) findings.push(finding('fail', 'validate', describe('warning', entry.file, w)));
+    }
+    return null;
   };
-  scan(report.manifest.file, report.manifest.errors, report.manifest.warnings);
-  for (const c of report.contents ?? []) scan(c?.file, c?.errors, c?.warnings);
+  const problem = [scan('manifest', report.manifest), ...contents.map((c, i) => scan(`contents[${i}]`, c))]
+    .find((p) => p !== null);
+  if (problem) return bad(problem);
   if (findings.length === 0 && report.success === false)
     return [finding('fail', 'validate', 'the report says success: false, but lists no error or warning we count')];
   if (findings.length === 0) findings.push(finding('ok', 'validate', 'no errors or warnings'));

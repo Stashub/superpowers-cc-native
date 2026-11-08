@@ -104,6 +104,80 @@ test('success: false with nothing of ours listed fails; success: false with a fi
   assert.match(withError[0].text, /bad name/);
 });
 
+// A real report: `claude plugin validate --json` (CC 2.1.319) on the renamed v7.0.2 plugin
+// without a version. Only the machine paths were replaced by <plugin>.
+const REAL_REPORT = {
+  "success": true,
+  "strict": false,
+  "target": "<plugin>/.claude-plugin/plugin.json",
+  "manifest": {
+    "file": "<plugin>/.claude-plugin/plugin.json",
+    "type": "plugin",
+    "errors": [],
+    "warnings": [
+      {
+        "path": "version",
+        "message": "No version specified. Consider adding a version following semver (e.g., \"1.0.0\")",
+        "code": null
+      }
+    ],
+    "notes": [],
+    "gatingHooks": []
+  },
+  "contents": [],
+  "advice": [
+    {
+      "file": "<plugin>/README.md",
+      "message": "This README has no line that installs \"superpowers-cc-native\" from a marketplace. Add the install line, which works in one step on Claude Code 2.1.275 or later. Validate the folder that holds its marketplace.json to have <owner>/<repo> filled in, and the name its marketplace lists it under.",
+      "installLine": "/plugin install superpowers-cc-native --marketplace <owner>/<repo>"
+    }
+  ],
+  "directory": {
+    "profile": null,
+    "findings": [
+      {
+        "code": "ICON_MISSING",
+        "title": "No icon",
+        "severity": "warning",
+        "blocking": false,
+        "hold": false,
+        "file": ".claude-plugin/plugin.json",
+        "field": "icon",
+        "message": "No icon found in the plugin. The validator looked for `icon` in plugin.json and for a file at .claude-plugin/icon.png or .svg, assets/icon.png or .svg, or a similar path.",
+        "fix": "Add a square PNG to the plugin folder at .claude-plugin/icon.png, or set `icon` in plugin.json to the path of a square PNG or JPEG in the plugin: 512 to 2048 px on each side, under 2 MB. SVG and WebP are not accepted. That file may become the listing icon only once: the first time the plugin is saved or submitted in the developer portal. Adding or changing it later does not change the icon."
+      }
+    ],
+    "undecided": [],
+    "incomplete": false,
+    "failure": null,
+    "notes": []
+  },
+  "digest": null,
+  "digestRefusal": null
+};
+
+test('the real CC 2.1.319 report for a plugin without a version has no failure', () => {
+  assert.equal(REAL_REPORT.success, true);
+  assert.deepEqual(filterValidateReport(REAL_REPORT).map((f) => f.level), ['ok']);
+});
+
+test('a malformed contents is a failure, never a throw', () => {
+  for (const contents of ['abc', [null], ['x'], {}, 5, null, [[]]]) {
+    const findings = filterValidateReport(report({ contents }));
+    assert.deepEqual(findings.map((f) => f.level), ['fail'], JSON.stringify(contents));
+    assert.match(findings[0].text, /contents/);
+  }
+});
+
+test('errors and warnings that are not arrays are a failure, never a throw', () => {
+  for (const bad of ['abc', {}, 5, null]) {
+    assert.deepEqual(filterValidateReport(report({ manifestErrors: bad })).map((f) => f.level), ['fail']);
+    assert.deepEqual(filterValidateReport(report({ manifestWarnings: bad })).map((f) => f.level), ['fail']);
+    assert.deepEqual(filterValidateReport(report({ contents: [{ file: 'x', errors: bad, warnings: [] }] }))
+      .map((f) => f.level), ['fail']);
+  }
+});
+
 test('contents may be absent or empty in a well-formed report', () => {
   const { contents, ...noContents } = report();
   assert.deepEqual(filterValidateReport(noContents).map((f) => f.level), ['ok']);
