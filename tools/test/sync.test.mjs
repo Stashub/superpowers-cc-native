@@ -268,6 +268,16 @@ for (const code of [
   });
 }
 
+test('a bad tag stops before anything is fetched', (t) => {
+  // origin cannot be reached, so a fetch before the tag check would stop with "git".
+  const repo = newRepo(t);
+  const missing = join(tempDir(t), 'missing');
+  git(repo, ['remote', 'add', 'origin', missing]);
+  assert.throws(() => sync(repo, 'v1.1.0-rc.1', missing), { code: 'bad-tag' });
+  assert.equal(git(repo, ['branch', '--show-current']), 'main');
+  assert.equal(git(repo, ['branch', '--list', 'upstream']), '');
+});
+
 test('a merge that fails without conflicts is a git error, not a conflict', (t) => {
   const origin = makeOrigin(t, RELEASES);
   const repo = newRepo(t);

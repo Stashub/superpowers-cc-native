@@ -29,6 +29,8 @@ export function runSync({ repo, tag, from = UPSTREAM_URL, check = true }) {
   const current = git(root, ['branch', '--show-current']);
   if (current !== MAIN && current !== syncBranch)
     throw new ToolError('not-on-main', `run sync from ${MAIN} or ${syncBranch}, not from ${current || 'a detached HEAD'}`);
+  // Before prepareUpstream, which may fetch origin: a mistyped tag stops even offline.
+  parseUpstreamTag(tag);
 
   const state = prepareUpstream(root);
   if (state !== 'none') {
@@ -38,7 +40,6 @@ export function runSync({ repo, tag, from = UPSTREAM_URL, check = true }) {
       throw new ToolError('upstream-edited', `the ${UPSTREAM_BRANCH} branch was edited by hand: ${list}`);
     }
   }
-  parseUpstreamTag(tag);
 
   let imported = false;
   const last = state === 'none' ? null : readImportTrailers(root, UPSTREAM_BRANCH);
