@@ -1,0 +1,8 @@
+{
+  "name": "superpowers-cc-native",
+  "owner": { "name": "Stashub", "url": "https://github.com/Stashub" },
+  "description": "Claude Code native fork of obra/superpowers",
+  "plugins": [
+    { "name": "superpowers-cc-native", "source": "./plugin", "version": "7.0.2-cc.1" }
+  ]
+}

@@ -1,0 +1,7 @@
+/.gitattributes text eol=lf
+/.gitignore text eol=lf
+/LICENSE text eol=lf
+/*.md text eol=lf
+/.claude-plugin/** text eol=lf
+/tools/** text eol=lf
+/docs/** text eol=lf
