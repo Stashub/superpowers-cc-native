@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+// Git pre-push hook (spec 8). Enabled per clone: git config core.hooksPath tools/hooks
+// main on the remote only takes released, tagged states (check.mjs --push), upstream only
+// sealed imports (as in spec 6.8), and neither branch may be deleted. Other refs pass.
+// Any block prints the reason and exits 1, which cancels the whole push.
+//
+// The file has no extension, so Node picks CommonJS or ES module from its syntax and from a
+// package.json above the clone. With "type": "commonjs" there, Node 24 exits 0 on ESM syntax
+// in such a file without running it, and the push would pass. Hence no import statement and
+// no import.meta here: the dynamic import() below works either way.
+(async () => {
+  const { realpathSync } = await import('node:fs');
+  const path = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+  const tools = path.join(path.dirname(realpathSync(process.argv[1])), '..');
+  const load = (rel) => import(pathToFileURL(path.join(tools, rel)).href);
+  const { runChecks } = await load('check.mjs');
+  const { repoRoot } = await load('lib/git.mjs');
+  const { verifySeals } = await load('lib/upstream.mjs');
+
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  for await (const chunk of process.stdin) input += chunk;
+
+  // Lines: <local ref> <local sha> <remote ref> <remote sha>
+  const root = repoRoot(process.cwd());
+  const blocks = [];
+  for (const line of input.split('\n')) {
+    const [, sha, remoteRef] = line.trim().split(' ');
+    if (remoteRef !== 'refs/heads/main' && remoteRef !== 'refs/heads/upstream') continue;
+    const branch = remoteRef.slice('refs/heads/'.length);
+    if (/^0+$/.test(sha)) {
+      blocks.push(`deleting ${branch} on the remote is not allowed`);
+    } else if (branch === 'main') {
+      for (const f of runChecks({ repo: root, mode: 'push', commit: sha }).findings)
+        if (f.level === 'fail') blocks.push(`main: ${f.code}: ${f.text}`);
+    } else {
+      const broken = verifySeals(root, sha).map((b) => `${b.commit.slice(0, 7)} (${b.reason})`);
+      if (broken.length > 0)
+        blocks.push(`upstream ${sha.slice(0, 7)} has commits that are not sealed imports: ${broken.join(', ')}`);
+    }
+  }
+  for (const b of blocks) console.error(`pre-push: blocked: ${b}`);
+  return blocks.length === 0 ? 0 : 1;
+})().then(
+  (code) => { process.exitCode = code; },
+  (err) => {
+    console.error(`pre-push: blocked: the check could not run: ${err?.message ?? err}`);
+    process.exitCode = 1;
+  },
+);
