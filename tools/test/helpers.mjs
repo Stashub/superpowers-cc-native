@@ -5,7 +5,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import {
-  chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync,
+  chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { git } from '../lib/git.mjs';
 import { IDENTITY } from '../lib/constants.mjs';
@@ -143,4 +143,47 @@ export function seedMain(dir) {
     '.claude-plugin/marketplace.json': JSON.stringify(marketplace, null, 2) + '\n',
   });
   commitAll(dir, 'chore: seed main');
+}
+
+// cleanValidateReport(): object. The shape of `claude plugin validate --json` (CC 2.1.319)
+// with nothing to report. Override fields as needed: { ...cleanValidateReport(), advice: [...] }.
+export function cleanValidateReport() {
+  return {
+    success: true,
+    strict: false,
+    manifest: { file: 'x', type: 'plugin', errors: [], warnings: [], notes: [], gatingHooks: [] },
+    contents: [],
+    advice: [],
+    directory: { profile: null, findings: [], undecided: [], incomplete: false, failure: null, notes: [] },
+  };
+}
+
+// makeFakeClaude(t, { output, exitCode = 0 }): { dir, bin, calls }. A fake `claude`: a node
+// script that prints `output` (a string, or an object printed as JSON; default: a clean
+// report) and exits with `exitCode`. dir is meant for the front of PATH. calls() returns what
+// the script was called with: [{ argv, cwd }]. Tests never use the real CLI.
+export function makeFakeClaude(t, { output = cleanValidateReport(), exitCode = 0 } = {}) {
+  const dir = tempDir(t);
+  const log = path.join(dir, 'calls.log');
+  const text = typeof output === 'string' ? output : JSON.stringify(output);
+  const bin = path.join(dir, 'claude');
+  writeFiles(dir, {
+    claude: {
+      exec: [
+        '#!/usr/bin/env node',
+        `require('node:fs').appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }) + '\\n');`,
+        `process.stdout.write(${JSON.stringify(text)});`,
+        `process.exitCode = ${exitCode};`,
+        '',
+      ].join('\n'),
+    },
+  });
+  const calls = () => {
+    try {
+      return readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  };
+  return { dir, bin, calls };
 }
