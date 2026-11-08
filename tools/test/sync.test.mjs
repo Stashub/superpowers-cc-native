@@ -193,6 +193,19 @@ test('CLI reports a stop on stderr and exits with 1', (t) => {
   assert.match(cli.stderr, /^stop \(bad-tag\): /);
 });
 
+test('CLI identity stop names every overriding variable and the command to rerun', (t) => {
+  const origin = makeOrigin(t, RELEASES);
+  const repo = newRepo(t);
+  const cli = spawnSync(process.execPath, [SYNC, 'v1.0.0', '--from', origin], {
+    cwd: repo, encoding: 'utf8',
+    env: { ...process.env, GIT_AUTHOR_NAME: 'Someone Else', GIT_COMMITTER_NAME: 'Someone Else' },
+  });
+  assert.equal(cli.status, 1);
+  assert.match(cli.stderr, /^stop \(identity\): /);
+  assert.ok(cli.stderr.includes('env -u GIT_AUTHOR_NAME -u GIT_COMMITTER_NAME node tools/sync.mjs v1.0.0'), cli.stderr);
+  assert.equal(cli.stderr.trim().split('\n').length, 1, cli.stderr);
+});
+
 test('CLI rejects missing and unknown arguments with exit 1', (t) => {
   const repo = newRepo(t);
   for (const args of [[], ['v1.0.0', '--frm', 'x'], ['v1.0.0', 'v1.1.0'], ['v1.0.0', '--from']]) {

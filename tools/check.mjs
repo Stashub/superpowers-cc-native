@@ -34,7 +34,7 @@ function defaultChecks(ctx) {
 // commits would get (6.8), a committed plugin/, and the release state of HEAD.
 function releaseChecks(ctx) {
   const { root } = ctx;
-  const identity = checkIdentity(root);
+  const identity = checkIdentity(root, 'node tools/check.mjs --release');
   const dirty = git(root, ['status', '--porcelain', '--', 'plugin/']);
   const state = releaseState(root);
   return [

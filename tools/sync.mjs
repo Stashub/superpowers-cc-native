@@ -22,7 +22,7 @@ export function runSync({ repo, tag, from = UPSTREAM_URL, check = true }) {
 
   if (git(root, ['status', '--porcelain']) !== '')
     throw new ToolError('dirty', 'the working copy has uncommitted changes; commit or stash them first');
-  const problems = checkIdentity(root);
+  const problems = checkIdentity(root, `node tools/sync.mjs ${tag}`);
   if (problems.length > 0) throw new ToolError('identity', problems.join('\n'));
 
   const syncBranch = `sync/${tag}`;

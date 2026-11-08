@@ -299,6 +299,13 @@ test('CLI: --release prints the expected number, --push checks a commit, bad arg
   assert.equal(res.status, 0, res.stdout + res.stderr);
   assert.match(res.stdout, /^INFO release: preparing release 1\.0\.0-cc\.1; expected number: 1\.0\.0-cc\.1/m);
 
+  // An identity from the environment fails and the message says how to rerun this command.
+  res = spawnSync(process.execPath, [CHECK, '--release'], {
+    cwd: repo, encoding: 'utf8', env: { ...env, GIT_AUTHOR_NAME: 'Someone Else', GIT_COMMITTER_NAME: 'Someone Else' },
+  });
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /^FAIL identity: .*env -u GIT_AUTHOR_NAME -u GIT_COMMITTER_NAME node tools\/check\.mjs --release$/m);
+
   const untagged = commitAll(repo, 'Release v1.0.0-cc.1');
   res = cli('--push', untagged);
   assert.equal(res.status, 1);

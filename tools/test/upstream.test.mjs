@@ -277,6 +277,20 @@ test('checkIdentity reports a wrong local name and email once each', (t) => {
   assert.match(problems[1], /user\.email/);
 });
 
+// Sets environment variables for the rest of the test.
+function withEnv(t, vars) {
+  for (const [name, value] of Object.entries(vars)) {
+    const saved = process.env[name];
+    process.env[name] = value;
+    t.after(() => {
+      if (saved === undefined) delete process.env[name];
+      else process.env[name] = saved;
+    });
+  }
+}
+
+const COMMAND = 'node tools/sync.mjs v1.0.0';
+
 for (const [variable, field] of [
   ['GIT_AUTHOR_NAME', 'name'],
   ['GIT_COMMITTER_NAME', 'name'],
@@ -286,15 +300,37 @@ for (const [variable, field] of [
   test(`checkIdentity reports ${variable} overriding a correct local config`, (t) => {
     const repo = tempDir(t);
     initRepo(repo);
-    const saved = process.env[variable];
-    process.env[variable] = field === 'name' ? 'Someone Else' : 'someone@example.invalid';
-    t.after(() => {
-      if (saved === undefined) delete process.env[variable];
-      else process.env[variable] = saved;
-    });
-    const problems = checkIdentity(repo);
+    withEnv(t, { [variable]: field === 'name' ? 'Someone Else' : 'someone@example.invalid' });
+    const problems = checkIdentity(repo, COMMAND);
     assert.equal(problems.length, 1);
     assert.match(problems[0], new RegExp(variable));
     assert.match(problems[0], field === 'name' ? /Someone Else/ : /someone@example\.invalid/);
+    assert.ok(problems[0].includes(`env -u ${variable} ${COMMAND}`), problems[0]);
   });
 }
+
+test('checkIdentity names every variable that overrides a field, one message per field', (t) => {
+  const repo = tempDir(t);
+  initRepo(repo);
+  withEnv(t, {
+    GIT_AUTHOR_NAME: 'Someone Else', GIT_COMMITTER_NAME: 'Someone Else',
+    GIT_AUTHOR_EMAIL: 'someone@example.invalid', GIT_COMMITTER_EMAIL: 'other@example.invalid',
+  });
+  const problems = checkIdentity(repo, COMMAND);
+  assert.equal(problems.length, 2);
+  assert.match(problems[0], /GIT_AUTHOR_NAME and GIT_COMMITTER_NAME/);
+  assert.ok(problems[0].includes(`env -u GIT_AUTHOR_NAME -u GIT_COMMITTER_NAME ${COMMAND}`), problems[0]);
+  assert.match(problems[1], /"someone@example\.invalid" for the author and "other@example\.invalid" for the committer/);
+  assert.ok(problems[1].includes(`env -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_EMAIL ${COMMAND}`), problems[1]);
+});
+
+test('checkIdentity names an author.name config that overrides user.name', (t) => {
+  const repo = tempDir(t);
+  initRepo(repo);
+  git(repo, ['config', '--local', 'author.name', 'Someone Else']);
+  const problems = checkIdentity(repo, COMMAND);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /Someone Else/);
+  assert.match(problems[0], /author\.name/);
+  assert.doesNotMatch(problems[0], /env -u/);
+});

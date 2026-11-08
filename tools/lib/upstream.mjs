@@ -206,8 +206,10 @@ const IDENT_RE = /^(.*) <(.*)> \d+ [+-]\d{4}$/;
 
 // Spec 5.3, 6.8. Problems with the identity commits would get, [] if there are none. Checks
 // the local config, then the identity git really uses (environment variables such as
-// GIT_AUTHOR_NAME override the local config). At most one message per field.
-export function checkIdentity(repo) {
+// GIT_AUTHOR_NAME override the local config). At most one message per field; it names every
+// variable that overrides the field and suggests `command` (the caller's own command line)
+// with them unset.
+export function checkIdentity(repo, command = 'git ...') {
   const local = (key) => {
     const res = run(repo, ['config', '--local', '--get', key]);
     return res.status === 0 ? res.stdout.toString('utf8').trim() : null;
@@ -245,12 +247,26 @@ export function checkIdentity(repo) {
         f.problem = `git cannot determine the ${f.label} it would commit with (git var failed)`;
       continue;
     }
-    const wrong = effective[f.label].find((e) => e.value !== f.want);
-    if (wrong) {
-      f.problem = `git would use ${f.label} "${wrong.value}" for the ${wrong.role.toLowerCase()}, not "${f.want}": ` +
-        `an environment variable (GIT_${wrong.role}_${f.label.toUpperCase()}) overrides the local config; ` +
-        `unset it, e.g. env -u GIT_${wrong.role}_${f.label.toUpperCase()} git ...`;
+    const wrong = effective[f.label].filter((e) => e.value !== f.want);
+    if (wrong.length === 0) continue;
+    const found = wrong.length === 2 && wrong[0].value === wrong[1].value
+      ? `"${wrong[0].value}" for the author and the committer`
+      : wrong.map((e) => `"${e.value}" for the ${e.role.toLowerCase()}`).join(' and ');
+    // The variable wins when it is set; otherwise author.name and the like in some config do.
+    const variable = (e) => `GIT_${e.role}_${f.label.toUpperCase()}`;
+    const vars = wrong.filter((e) => process.env[variable(e)] !== undefined).map(variable);
+    const keys = wrong.filter((e) => process.env[variable(e)] === undefined).map((e) => `${e.role.toLowerCase()}.${f.label}`);
+    const causes = [];
+    if (vars.length > 0) {
+      causes.push(`the environment ${vars.length > 1 ? 'variables' : 'variable'} ${vars.join(' and ')} ` +
+        `${vars.length > 1 ? 'override' : 'overrides'} the local config; unset ${vars.length > 1 ? 'them' : 'it'} ` +
+        `for this command, e.g. env ${vars.map((v) => `-u ${v}`).join(' ')} ${command}`);
     }
+    if (keys.length > 0) {
+      causes.push(`the config ${keys.join(' and ')} ${keys.length > 1 ? 'override' : 'overrides'} user.${f.label}; ` +
+        `remove ${keys.length > 1 ? 'them' : 'it'} (git config --show-origin --get ${keys[0]} shows where it is set)`);
+    }
+    f.problem = `git would use ${f.label} ${found}, not "${f.want}": ${causes.join('; ')}`;
   }
   return fields.filter((f) => f.problem !== null).map((f) => f.problem);
 }
