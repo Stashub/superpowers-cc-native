@@ -1,0 +1,19 @@
+{
+  "name": "superpowers-cc-native",
+  "description": "Claude Code native fork of obra/superpowers. Core skills library for Claude Code: TDD, debugging, collaboration patterns, and proven techniques",
+  "author": {
+    "name": "Stashub",
+    "url": "https://github.com/Stashub"
+  },
+  "homepage": "https://github.com/Stashub/superpowers-cc-native",
+  "repository": "https://github.com/Stashub/superpowers-cc-native",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "tdd",
+    "debugging",
+    "collaboration",
+    "best-practices",
+    "workflows"
+  ]
+}
