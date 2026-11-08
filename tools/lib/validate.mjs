@@ -1,5 +1,6 @@
 // `claude plugin validate --json` as findings (spec 7.3).
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { finding, tail } from './findings.mjs';
 
 // The one warning we accept: the version lives in the marketplace entry, not in plugin.json.
@@ -12,9 +13,16 @@ const describe = (kind, file, item) => {
   return `${kind}${where ? ` in ${where}` : ''}: ${item?.message ?? JSON.stringify(item)}`;
 };
 
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
 // A failure is any error and any warning in `manifest` and `contents`, except the one above.
-// `advice` and `directory` are ignored. One ok finding if nothing fails.
+// `advice` and `directory` are ignored. One ok finding if nothing fails. A report that is not
+// an object, has no `manifest` object, or says success: false without any finding of ours,
+// is a failure: this is a gate, and a shape we do not know must not pass. `contents` may be
+// absent or empty.
 export function filterValidateReport(report) {
+  if (!isObject(report) || !isObject(report.manifest))
+    return [finding('fail', 'validate', 'unexpected report: it is not an object with a "manifest" object')];
   const findings = [];
   const scan = (file, errors, warnings) => {
     for (const e of errors ?? []) findings.push(finding('fail', 'validate', describe('error', file, e)));
@@ -22,8 +30,10 @@ export function filterValidateReport(report) {
       if (!isAllowed(w)) findings.push(finding('fail', 'validate', describe('warning', file, w)));
     }
   };
-  scan(report?.manifest?.file, report?.manifest?.errors, report?.manifest?.warnings);
-  for (const c of report?.contents ?? []) scan(c?.file, c?.errors, c?.warnings);
+  scan(report.manifest.file, report.manifest.errors, report.manifest.warnings);
+  for (const c of report.contents ?? []) scan(c?.file, c?.errors, c?.warnings);
+  if (findings.length === 0 && report.success === false)
+    return [finding('fail', 'validate', 'the report says success: false, but lists no error or warning we count')];
   if (findings.length === 0) findings.push(finding('ok', 'validate', 'no errors or warnings'));
   return findings;
 }
@@ -35,6 +45,9 @@ export function runValidate(root, target, { claudeBin = 'claude', missing = 'war
   const res = spawnSync(claudeBin, ['plugin', 'validate', target, '--json'], {
     cwd: root, encoding: 'utf8', maxBuffer: 1 << 28, timeout: 120_000,
   });
+  // spawn also reports ENOENT when the working directory does not exist.
+  if (res.error?.code === 'ENOENT' && !existsSync(root))
+    return [finding('fail', 'validate', `${label}: the directory ${root} does not exist`)];
   if (res.error?.code === 'ENOENT')
     return [finding(missing, 'validate', `${label}: claude (${claudeBin}) was not found, validation skipped`)];
   if (res.error)

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { filterValidateReport, runValidate } from '../lib/validate.mjs';
 import { cleanValidateReport, makeFakeClaude, tempDir } from './helpers.mjs';
 
@@ -80,6 +81,46 @@ test('a clean report gives one ok finding', () => {
   assert.equal(findings.length, 1);
   assert.equal(findings[0].level, 'ok');
   assert.equal(findings[0].code, 'validate');
+});
+
+test('a report of an unexpected shape fails', () => {
+  for (const r of [{}, { success: false }, null, undefined, [], 'text', { manifest: null }, { manifest: [] },
+    { error: 'boom' }]) {
+    const findings = filterValidateReport(r);
+    assert.equal(findings.length, 1, JSON.stringify(r));
+    assert.equal(findings[0].level, 'fail', JSON.stringify(r));
+    assert.equal(findings[0].code, 'validate');
+  }
+});
+
+test('success: false with nothing of ours listed fails; success: false with a finding says why', () => {
+  const only = filterValidateReport({ ...report({ manifestWarnings: [allowed] }), success: false });
+  assert.deepEqual(only.map((f) => f.level), ['fail']);
+  assert.match(only[0].text, /success: false/);
+  const withError = filterValidateReport({
+    ...report({ manifestErrors: [{ path: 'name', message: 'bad name', code: null }] }), success: false,
+  });
+  assert.equal(fails(withError).length, 1);
+  assert.match(withError[0].text, /bad name/);
+});
+
+test('contents may be absent or empty in a well-formed report', () => {
+  const { contents, ...noContents } = report();
+  assert.deepEqual(filterValidateReport(noContents).map((f) => f.level), ['ok']);
+  assert.deepEqual(filterValidateReport(report({ contents: [] })).map((f) => f.level), ['ok']);
+});
+
+test('a root directory that does not exist is a failure naming it, not a missing claude', (t) => {
+  const gone = path.join(tempDir(t), 'gone');
+  const fake = makeFakeClaude(t);
+  for (const missing of ['warn', 'fail']) {
+    const findings = runValidate(gone, '.', { claudeBin: fake.bin, missing });
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].level, 'fail');
+    assert.equal(findings[0].code, 'validate');
+    assert.ok(findings[0].text.includes(gone), findings[0].text);
+  }
+  assert.equal(fake.calls().length, 0);
 });
 
 test('missing claude is a warning by default and a failure when asked', (t) => {
