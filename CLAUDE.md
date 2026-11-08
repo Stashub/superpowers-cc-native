@@ -81,6 +81,10 @@ number and accepts only it. No `-dev` versions in `main`.
    branch and repeat steps 1-2: the number may change.
 4. `git push --follow-tags origin main upstream`.
 
+Release tags are always annotated: a lightweight `v*-cc.*` tag does not count
+as a release and `check.mjs` reports it (`tag-lightweight`). Never move, delete
+or recreate a published release tag.
+
 Steps 1-3 need one word from the owner, step 4 a separate one. The
 `tools/hooks/pre-push` hook rejects a push of `main` without a tagged release
 and a push of `upstream` with a broken `Sync-Tree` seal. It also checks the

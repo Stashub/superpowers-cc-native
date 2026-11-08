@@ -66,11 +66,21 @@ const isRelease = (tag) => {
   }
 };
 
-// The highest release tag `v*-cc.*` reachable from `sha`, without "v"; or null.
-function lastRelease(root, sha) {
-  const tags = git(root, ['tag', '--list', 'v*-cc.*', '--merged', sha]).split('\n').filter(isRelease);
-  if (tags.length === 0) return null;
-  return tags.reduce((a, b) => (compareRelease(a, b) >= 0 ? a : b)).slice(1);
+// Release tags `v*-cc.*` reachable from `sha`. Spec 8: they are annotated, and only those
+// count. Returns { last, lightweight }: the highest annotated one without "v" (or null) and
+// the names of the lightweight ones.
+function releaseTags(root, sha) {
+  const out = git(root, [
+    'for-each-ref', '--merged', sha, '--format=%(objecttype) %(refname:strip=2)', 'refs/tags/v*-cc.*',
+  ]);
+  const annotated = [];
+  const lightweight = [];
+  for (const line of out.split('\n').filter(Boolean)) {
+    const [type, name] = line.split(' ');
+    if (isRelease(name)) (type === 'tag' ? annotated : lightweight).push(name);
+  }
+  if (annotated.length === 0) return { last: null, lightweight };
+  return { last: annotated.reduce((a, b) => (compareRelease(a, b) >= 0 ? a : b)).slice(1), lightweight };
 }
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -87,22 +97,25 @@ export function releaseState(root, { commit = 'HEAD', worktree = true } = {}) {
   const sha = resolveCommit(root, commit);
   if (sha === null) throw new ToolError('bad-commit', `${commit} is not a commit`);
   const base = baseOf(root, sha);
-  const last = lastRelease(root, sha);
+  const { last, lightweight } = releaseTags(root, sha);
   const expected = base === null ? null : nextReleaseVersion(base, last);
   const version = marketplaceVersion(readText(root, MARKETPLACE, sha, worktree));
   const result = (state, errors = []) => ({ state, base, last, expected, version, errors });
   const fail = (code, text) => finding('fail', code, text);
   const shown = version === null ? `missing in ${MARKETPLACE}` : version;
+  const tagErrors = lightweight.map((name) => fail('tag-lightweight',
+    `release tag ${name} is lightweight, so it does not count as a release (release tags are annotated); ` +
+    `if it was never pushed, replace it on the same commit: git tag -f -a -m "Release ${name}" ${name} ${name}`));
 
   const tree = revParse(root, `${sha}:plugin`);
   const changed = last === null ? tree !== null : tree !== revParse(root, `refs/tags/v${last}:plugin`);
   if (!changed) {
-    if (last === null || version === last) return result('nothing');
-    return result('error', [fail('no-plugin-change',
+    if (last === null || version === last) return result(tagErrors.length === 0 ? 'nothing' : 'error', tagErrors);
+    return result('error', [...tagErrors, fail('no-plugin-change',
       `the version is ${shown}, not the last release ${last}, but plugin/ has not changed since v${last}`)]);
   }
 
-  const errors = [];
+  const errors = [...tagErrors];
   if (base === null) {
     errors.push(fail('no-base', 'plugin/ exists, but no upstream import is merged, so there is no base for the number'));
   } else if (version !== expected) {
@@ -113,7 +126,7 @@ export function releaseState(root, { commit = 'HEAD', worktree = true } = {}) {
   if (version !== null) {
     if (!hasHeading(readText(root, CHANGELOG, sha, worktree), version))
       errors.push(fail('changelog-missing', `${CHANGELOG} has no heading "## ${version} - YYYY-MM-DD"`));
-    if (version !== last && revParse(root, `refs/tags/v${version}`) !== null)
+    if (version !== last && !lightweight.includes(`v${version}`) && revParse(root, `refs/tags/v${version}`) !== null)
       errors.push(fail('tag-elsewhere', `tag v${version} already exists, but it is not the last release reachable from this commit`));
   }
   return result(errors.length === 0 ? 'preparing' : 'error', errors);

@@ -148,6 +148,37 @@ test('a bumped number without plugin changes is an error', (t) => {
   assert.ok(s.errors.some((e) => e.code === 'no-plugin-change'), JSON.stringify(s.errors));
 });
 
+test('a lightweight release tag is an error and is not counted as a release', (t) => {
+  // The only release tag is lightweight: no release yet, and push mode refuses the commit.
+  const { repo } = prepared(t);
+  const commit = commitAll(repo, 'Release v1.0.0-cc.1');
+  git(repo, ['tag', 'v1.0.0-cc.1', commit]);
+  let s = releaseState(repo);
+  assert.equal(s.state, 'error');
+  assert.equal(s.last, null);
+  assert.deepEqual(codes(s), ['tag-lightweight']);
+  assert.match(s.errors[0].text, /v1\.0\.0-cc\.1 is lightweight/);
+  assert.match(s.errors[0].text, /git tag -f -a/);
+  const push = runChecks({ repo, mode: 'push', commit });
+  assert.equal(push.ok, false);
+  assert.match(push.findings[0].text, /tag-lightweight/);
+  // Replaced by an annotated tag on the same commit, it is the last release.
+  git(repo, ['tag', '-f', '-a', '-m', 'Release v1.0.0-cc.1', 'v1.0.0-cc.1', commit]);
+  s = releaseState(repo);
+  assert.equal(s.state, 'nothing', JSON.stringify(s.errors));
+  assert.equal(s.last, '1.0.0-cc.1');
+
+  // A lightweight tag above an annotated release: the annotated one is the last release.
+  const second = released(t).repo;
+  writeFiles(second, { [SKILL]: 'Our own wording.\n', 'CHANGELOG.md': changelog('1.0.0-cc.2', '1.0.0-cc.1') });
+  setVersion(second, '1.0.0-cc.2');
+  git(second, ['tag', 'v1.0.0-cc.2', commitAll(second, 'Release v1.0.0-cc.2')]);
+  s = releaseState(second);
+  assert.equal(s.last, '1.0.0-cc.1');
+  assert.equal(s.expected, '1.0.0-cc.2');
+  assert.deepEqual(codes(s), ['tag-lightweight']);
+});
+
 test('plugin/ without a merged upstream import has no base', (t) => {
   const repo = fresh(t);
   writeFiles(repo, { 'plugin/README.md': 'Readme.\n' });
