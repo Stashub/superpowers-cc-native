@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Git pre-push hook (spec 8). Enabled per clone: git config core.hooksPath tools/hooks
 // main on the remote only takes released, tagged states (check.mjs --push), upstream only
-// sealed imports (as in spec 6.8), and neither branch may be deleted. Other refs pass.
-// Any block prints the reason and exits 1, which cancels the whole push.
+// sealed imports (as in spec 6.8), and neither branch may be deleted. On every ref, new
+// commits and pushed tags must carry the identity of spec 5.3, and release and import tags
+// must be annotated (lib/push.mjs). Any block prints the reason and exits 1, which cancels
+// the whole push.
 //
 // The file has no extension, so Node picks CommonJS or ES module from its syntax and from a
 // package.json above the clone. With "type": "commonjs" there, Node 24 exits 0 on ESM syntax
@@ -17,16 +19,20 @@
   const { runChecks } = await load('check.mjs');
   const { repoRoot } = await load('lib/git.mjs');
   const { verifySeals } = await load('lib/upstream.mjs');
+  const { checkPushIdentity } = await load('lib/push.mjs');
 
   let input = '';
   process.stdin.setEncoding('utf8');
   for await (const chunk of process.stdin) input += chunk;
 
-  // Lines: <local ref> <local sha> <remote ref> <remote sha>
+  // Lines: <local ref> <local sha> <remote ref> <remote sha>. Arguments: remote name, URL.
   const root = repoRoot(process.cwd());
+  const updates = input.split('\n').filter((line) => line.trim() !== '').map((line) => {
+    const [localRef, localSha, remoteRef, remoteSha] = line.trim().split(' ');
+    return { localRef, localSha, remoteRef, remoteSha };
+  });
   const blocks = [];
-  for (const line of input.split('\n')) {
-    const [, sha, remoteRef] = line.trim().split(' ');
+  for (const { localSha: sha, remoteRef } of updates) {
     if (remoteRef !== 'refs/heads/main' && remoteRef !== 'refs/heads/upstream') continue;
     const branch = remoteRef.slice('refs/heads/'.length);
     if (/^0+$/.test(sha)) {
@@ -40,6 +46,7 @@
         blocks.push(`upstream ${sha.slice(0, 7)} has commits that are not sealed imports: ${broken.join(', ')}`);
     }
   }
+  blocks.push(...checkPushIdentity(root, process.argv[2] ?? null, updates));
   for (const b of blocks) console.error(`pre-push: blocked: ${b}`);
   return blocks.length === 0 ? 0 : 1;
 })().then(

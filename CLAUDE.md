@@ -83,7 +83,11 @@ number and accepts only it. No `-dev` versions in `main`.
 
 Steps 1-3 need one word from the owner, step 4 a separate one. The
 `tools/hooks/pre-push` hook rejects a push of `main` without a tagged release
-and a push of `upstream` with a broken `Sync-Tree` seal.
+and a push of `upstream` with a broken `Sync-Tree` seal. It also checks the
+identity of every pushed commit and tag on any branch (author, committer and
+tagger must be Stashub with the noreply address, release and import tags must
+be annotated), so contributions by others are merged on GitHub, not pushed
+from a local merge.
 
 ## Growth rules
 
