@@ -42,16 +42,16 @@ claude plugin disable superpowers@claude-plugins-official --scope user
 ```
 
 Do not uninstall the original while sessions still run on it. Finish by
-checking `claude plugin list`.
+checking `claude plugin list`. In the commands below, replace
+`superpowers@superpowers-marketplace` with `superpowers@claude-plugins-official`
+if that is where you got the original.
 
 - **Skill names change.** `/superpowers:brainstorming` becomes
   `/superpowers-cc-native:brainstorming`. Fix such references in your own
   CLAUDE.md files and notes.
 - **Running sessions** stay on the old plugin until `/reload-plugins`, `/cd`, a
   restart or `--resume`. `--resume` loads the plugin that is installed now.
-- **Finish a plan started on the original with the original.** In the command
-  below, replace `superpowers@superpowers-marketplace` with
-  `superpowers@claude-plugins-official` if that is where you got it:
+- **Finish a plan started on the original with the original:**
 
   ```
   claude --resume <id> --settings '{"enabledPlugins":{"superpowers@superpowers-marketplace":true,"superpowers-cc-native@superpowers-cc-native":false}}'
