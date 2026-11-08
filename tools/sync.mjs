@@ -86,7 +86,11 @@ export function runSync({ repo, tag, from = UPSTREAM_URL, check = true }) {
     const res = spawnSync(process.execPath, [fileURLToPath(new URL('./check.mjs', import.meta.url))], {
       cwd: root, stdio: 'inherit',
     });
-    if (res.status !== 0) throw new ToolError('check-failed', 'check.mjs failed after the merge');
+    if (res.status !== 0) {
+      throw new ToolError('check-failed', `check.mjs failed after the merge (its output is above); ` +
+        `you are on ${syncBranch} and the merge of upstream ${tag} is committed there. ` +
+        'Fix the problems, commit, and run node tools/check.mjs');
+    }
   }
   return { status: 'merged', imported, branch: syncBranch, conflicts: [], numstat };
 }

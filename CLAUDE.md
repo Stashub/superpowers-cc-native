@@ -54,12 +54,17 @@ original's `plugin/tests/**/*.test.js`.
    builds the renamed import commit on `upstream` with tag `upstream/<tag>`,
    creates branch `sync/<tag>` from `main` and merges `upstream` into it with
    `--no-ff`.
-2. Read the report: clean merge or conflicted files, the count of our lines in
-   the original's files (`git diff --numstat upstream HEAD -- plugin/`), then
-   the `check.mjs` output.
-3. On conflict the script stops and the branch stays mid-merge. Resolve it,
-   commit, run `node tools/check.mjs`.
-4. Release in the same branch (next section). After the owner's word, move
+2. Read the output. After a clean merge `sync.mjs` runs `node tools/check.mjs`,
+   so the check output comes first. The report follows: clean merge or
+   conflicted files, and the count of our lines in the original's files
+   (`git diff --numstat upstream HEAD -- plugin/`).
+3. On conflict the script stops without the check, prints the report and the
+   branch stays mid-merge. Resolve it, commit, run `node tools/check.mjs`.
+4. If the check fails, the script stops with `check-failed` and prints no
+   report. You are on `sync/<tag>` and the merge is committed there. Fix,
+   commit, run `node tools/check.mjs`. Rerunning sync for the same tag then
+   reports `nothing-to-do` and does not run the check.
+5. Release in the same branch (next section). After the owner's word, move
    `main` to the branch with `git merge --ff-only` and delete the `sync/*`
    branch.
 

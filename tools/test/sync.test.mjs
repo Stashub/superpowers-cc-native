@@ -290,7 +290,7 @@ test('a merge that fails without conflicts is a git error, not a conflict', (t) 
 test('a failing check.mjs after a clean merge stops sync with check-failed', (t) => {
   // The fake original has no tests/, so the original-test findings fail in the spawned check.mjs.
   // runSync runs in a child process: the check inherits its stdio, and here that is captured
-  // instead of landing in the test log. The first line of stdout is the outcome.
+  // instead of landing in the test log. The last line of stdout is the outcome.
   const origin = makeOrigin(t, RELEASES);
   const repo = newRepo(t);
   const fake = makeFakeClaude(t);
@@ -300,15 +300,25 @@ test('a failing check.mjs after a clean merge stops sync with check-failed', (t)
       const res = runSync({ repo: process.argv[1], tag: 'v1.0.0', from: process.argv[2], check: true });
       console.log('returned ' + res.status);
     } catch (err) {
-      console.log('threw ' + err.code);
+      console.log('threw ' + err.code + ': ' + err.message);
     }`;
   const res = spawnSync(process.execPath, ['--input-type=module', '-e', script, repo, origin], {
     encoding: 'utf8',
     env: { ...process.env, PATH: `${fake.dir}${delimiter}${process.env.PATH}` },
   });
-  const lines = res.stdout.split('\n');
-  assert.equal(lines.at(-2), 'threw check-failed', res.stdout + res.stderr);
+  const outcome = res.stdout.split('\n').at(-2);
+  assert.match(outcome, /^threw check-failed: /, res.stdout + res.stderr);
+  // The report is lost, so the message says where the merge is.
+  assert.match(outcome, /you are on sync\/v1\.0\.0/);
+  assert.match(outcome, /merge .* is committed there/);
   assert.match(res.stdout, /^FAIL original-test: /m);
   assert.equal(fake.calls().length, 2);
   assert.equal(git(repo, ['branch', '--show-current']), 'sync/v1.0.0');
+  assert.equal(git(repo, ['status', '--porcelain']), '');
+  assert.equal(git(repo, ['log', '-1', '--format=%s']), 'Merge upstream v1.0.0');
+
+  // Recovery (CLAUDE.md): a rerun reports nothing-to-do and does not run the check again.
+  const rerun = runSync({ repo, tag: 'v1.0.0', from: origin, check: true });
+  assert.equal(rerun.status, 'nothing-to-do');
+  assert.equal(fake.calls().length, 2);
 });
