@@ -105,7 +105,8 @@ export function releaseState(root, { commit = 'HEAD', worktree = true } = {}) {
   const shown = version === null ? `missing in ${MARKETPLACE}` : version;
   const tagErrors = lightweight.map((name) => fail('tag-lightweight',
     `release tag ${name} is lightweight, so it does not count as a release (release tags are annotated); ` +
-    `if it was never pushed, replace it on the same commit: git tag -f -a -m "Release ${name}" ${name} ${name}`));
+    `if it was never pushed, replace it on the same commit: git tag -f -a -m "Release ${name}" ${name} ${name}^{commit}; ` +
+    'if it is already on the remote, see "Lightweight release tag" in CLAUDE.md'));
 
   const tree = revParse(root, `${sha}:plugin`);
   const changed = last === null ? tree !== null : tree !== revParse(root, `refs/tags/v${last}:plugin`);

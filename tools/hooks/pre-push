@@ -2,9 +2,10 @@
 // Git pre-push hook (spec 8). Enabled per clone: git config core.hooksPath tools/hooks
 // main on the remote only takes released, tagged states (check.mjs --push), upstream only
 // sealed imports (as in spec 6.8), and neither branch may be deleted. On every ref, new
-// commits and pushed tags must carry the identity of spec 5.3, and release and import tags
-// must be annotated (lib/push.mjs). Any block prints the reason and exits 1, which cancels
-// the whole push.
+// commits and pushed tags must carry the identity of spec 5.3, release and import tags must be
+// annotated, and a published annotated one is never replaced, moved or deleted (lib/push.mjs).
+// New commits are the ones the remote does not have in any of its refs (git ls-remote). Any
+// block prints the reason and exits 1, which cancels the whole push.
 //
 // The file has no extension, so Node picks CommonJS or ES module from its syntax and from a
 // package.json above the clone. With "type": "commonjs" there, Node 24 exits 0 on ESM syntax
@@ -17,25 +18,42 @@
   const tools = path.join(path.dirname(realpathSync(process.argv[1])), '..');
   const load = (rel) => import(pathToFileURL(path.join(tools, rel)).href);
   const { runChecks } = await load('check.mjs');
-  const { repoRoot } = await load('lib/git.mjs');
+  const { repoRoot, run } = await load('lib/git.mjs');
   const { verifySeals } = await load('lib/upstream.mjs');
-  const { checkPushIdentity } = await load('lib/push.mjs');
+  const { checkPublishedTags, checkPushIdentity } = await load('lib/push.mjs');
 
+  const SHA_RE = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
+  const ZERO_RE = /^0+$/;
   let input = '';
   process.stdin.setEncoding('utf8');
   for await (const chunk of process.stdin) input += chunk;
 
-  // Lines: <local ref> <local sha> <remote ref> <remote sha>. Arguments: remote name, URL.
+  // Lines: <local ref> SP <local sha> SP <remote ref> SP <remote sha>. Arguments: remote name,
+  // URL. The local ref is what the user typed and may contain spaces; the other three fields
+  // never do, so a line is parsed from the right. A line that does not fit blocks the push:
+  // skipping it would skip the checks.
   const root = repoRoot(process.cwd());
-  const updates = input.split('\n').filter((line) => line.trim() !== '').map((line) => {
-    const [localRef, localSha, remoteRef, remoteSha] = line.trim().split(' ');
-    return { localRef, localSha, remoteRef, remoteSha };
-  });
   const blocks = [];
+  const updates = [];
+  for (const raw of input.split('\n')) {
+    const line = raw.replace(/\r$/, '').trim();
+    if (line === '') continue;
+    const fields = line.split(' ');
+    if (fields.length < 4 || !SHA_RE.test(fields.at(-3)) || !SHA_RE.test(fields.at(-1))) {
+      blocks.push(`malformed line from git, cannot check it: ${line}`);
+      continue;
+    }
+    const [remoteSha, remoteRef, localSha] = [fields.pop(), fields.pop(), fields.pop()];
+    if (!ZERO_RE.test(localSha) && run(root, ['cat-file', '-e', localSha]).status !== 0) {
+      blocks.push(`cannot resolve ${localSha} for ${remoteRef}`);
+      continue;
+    }
+    updates.push({ localRef: fields.join(' '), localSha, remoteRef, remoteSha });
+  }
   for (const { localSha: sha, remoteRef } of updates) {
     if (remoteRef !== 'refs/heads/main' && remoteRef !== 'refs/heads/upstream') continue;
     const branch = remoteRef.slice('refs/heads/'.length);
-    if (/^0+$/.test(sha)) {
+    if (ZERO_RE.test(sha)) {
       blocks.push(`deleting ${branch} on the remote is not allowed`);
     } else if (branch === 'main') {
       for (const f of runChecks({ repo: root, mode: 'push', commit: sha }).findings)
@@ -46,7 +64,9 @@
         blocks.push(`upstream ${sha.slice(0, 7)} has commits that are not sealed imports: ${broken.join(', ')}`);
     }
   }
-  blocks.push(...checkPushIdentity(root, process.argv[2] ?? null, updates));
+  // argv[3] is the URL git pushes to (argv[2] is the remote name, or the URL again).
+  blocks.push(...checkPushIdentity(root, process.argv[3] ?? null, updates));
+  blocks.push(...checkPublishedTags(root, updates));
   for (const b of blocks) console.error(`pre-push: blocked: ${b}`);
   return blocks.length === 0 ? 0 : 1;
 })().then(

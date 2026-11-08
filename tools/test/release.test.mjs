@@ -158,7 +158,8 @@ test('a lightweight release tag is an error and is not counted as a release', (t
   assert.equal(s.last, null);
   assert.deepEqual(codes(s), ['tag-lightweight']);
   assert.match(s.errors[0].text, /v1\.0\.0-cc\.1 is lightweight/);
-  assert.match(s.errors[0].text, /git tag -f -a/);
+  assert.match(s.errors[0].text, /git tag -f -a -m "Release v1\.0\.0-cc\.1" v1\.0\.0-cc\.1 v1\.0\.0-cc\.1\^\{commit\}/);
+  assert.match(s.errors[0].text, /already on the remote, see "Lightweight release tag" in CLAUDE\.md/);
   const push = runChecks({ repo, mode: 'push', commit });
   assert.equal(push.ok, false);
   assert.match(push.findings[0].text, /tag-lightweight/);

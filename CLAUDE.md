@@ -92,15 +92,53 @@ another clone may have released meanwhile.
 
 Release tags are always annotated: a lightweight `v*-cc.*` tag does not count
 as a release and `check.mjs` reports it (`tag-lightweight`). Never move, delete
-or recreate a published release tag.
+or recreate a published annotated release tag.
+
+Create a GitHub release only from the existing annotated tag: pick the tag in
+the form and never let GitHub create a new one, because a tag made there is
+lightweight.
 
 Steps 1-3 need one word from the owner, step 4 a separate one. The
 `tools/hooks/pre-push` hook rejects a push of `main` without a tagged release
 and a push of `upstream` with a broken `Sync-Tree` seal. It also checks the
 identity of every pushed commit and tag on any branch (author, committer and
 tagger must be Stashub with the noreply address, release and import tags must
-be annotated), so contributions by others are merged on GitHub, not pushed
-from a local merge.
+be annotated). A commit is new unless the remote already has it in one of its
+refs (the hook asks with `git ls-remote`; local remote-tracking refs are not
+trusted), so commits already on the remote under their authors' names pass,
+while a local merge of commits the remote does not have is blocked:
+contributions by others are merged on GitHub. A published annotated `v*-cc.*`
+or `upstream/*` tag is never replaced, moved or deleted by a push; a
+lightweight one may be replaced on the same commit or deleted.
+
+### Lightweight release tag
+
+You get here when `check.mjs` reports `tag-lightweight`, or when
+`git fetch origin --tags` fails with "would clobber existing tag". A GitHub
+release made in the web UI with a new tag puts a lightweight tag on the remote.
+First look at the remote:
+
+```
+git ls-remote origin "refs/tags/<tag>" "refs/tags/<tag>^{}"
+```
+
+- A `refs/tags/<tag>^{}` line means the remote tag is already annotated. Push
+  nothing, and take the remote tag:
+  `git fetch origin --force "refs/tags/<tag>:refs/tags/<tag>"`.
+- A single line naming commit C means the remote tag is lightweight.
+  - If C is that release (the version in its
+    `.claude-plugin/marketplace.json` is the tag's number, and
+    `node tools/check.mjs --push C` passes once the tag is annotated), replace
+    the tag on the same commit: `git tag -f -a -m "Release <tag>" <tag> C`, then
+    `git push --force-with-lease=refs/tags/<tag>:C origin refs/tags/<tag>`. The
+    commit does not change, so this does not move a release.
+  - Otherwise it is not a release: delete the GitHub release, then
+    `git push --force-with-lease=refs/tags/<tag>:C origin :refs/tags/<tag>` and
+    `git tag -d <tag>`.
+
+The lease makes git refuse the push if the remote tag has meanwhile become
+annotated or names another commit. Both pushes need the owner's word, like any
+push.
 
 ## Growth rules
 
