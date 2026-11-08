@@ -76,6 +76,10 @@ The version is `<original version>-cc.N`, for example `7.0.2-cc.1`,
 `7.0.2-cc.2`, `7.0.3-cc.1`. `node tools/check.mjs --release` prints the expected
 number and accepts only it. No `-dev` versions in `main`.
 
+Before step 1, run `git fetch origin --tags` (while there is no `origin` yet,
+skip it). The number is computed from local tags and branches only, and
+another clone may have released meanwhile.
+
 1. In the branch, set the version in `.claude-plugin/marketplace.json` (the
    only place it is recorded) and rename `## Unreleased` in `CHANGELOG.md` to
    `## <version> - YYYY-MM-DD`, with a new empty `## Unreleased` above it.
