@@ -70,6 +70,24 @@ test('buildImportTree removes the temp index when it fails', (t) => {
   assert.deepEqual(readdirSync(gitDir).filter((f) => f.startsWith('sync-index')), []);
 });
 
+test('buildImportTree ignores a stale temp index and lock left by a killed run', (t) => {
+  const { repo, gitDir } = setup(t);
+  const clean = buildImportTree(repo, 'v1.0.0').tree;
+  const indexFile = path.join(gitDir, `sync-index-${process.pid}`);
+  const blob = git(repo, ['hash-object', '-w', '--stdin'], { input: 'leftover\n' });
+  git(repo, ['update-index', '--add', '--cacheinfo', `100644,${blob},plugin/leftover.txt`], {
+    env: { GIT_INDEX_FILE: indexFile },
+  });
+  let { tree } = buildImportTree(repo, 'v1.0.0');
+  assert.doesNotMatch(git(repo, ['ls-tree', '-r', '--name-only', tree]), /leftover/);
+  assert.equal(tree, clean);
+
+  writeFiles(gitDir, { [`sync-index-${process.pid}.lock`]: '' });
+  ({ tree } = buildImportTree(repo, 'v1.0.0'));
+  assert.equal(tree, clean);
+  assert.deepEqual(readdirSync(gitDir).filter((f) => f.startsWith('sync-index')), []);
+});
+
 test('buildImportTree renames text blobs byte for byte, never symlinks, and counts', (t) => {
   const latin1 = Buffer.from('caf\xe9 superpowers:alpha, foo-superpowers:beta, superpowers:gamma\n', 'latin1');
   const origin = makeOrigin(t, [{

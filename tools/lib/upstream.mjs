@@ -65,6 +65,12 @@ export function buildImportTree(repo, tag) {
   const gitDir = git(repo, ['rev-parse', '--absolute-git-dir']);
   const indexFile = path.join(gitDir, `sync-index-${process.pid}`);
   const env = { GIT_INDEX_FILE: indexFile };
+  // A killed run with the same pid may have left the index or its lock behind; no live
+  // process owns them, and stale entries must not reach the sealed tree. Removed before use too.
+  const removeIndex = () => {
+    rmSync(indexFile, { force: true });
+    rmSync(`${indexFile}.lock`, { force: true });
+  };
   const writeBlob = (buf) =>
     git(repo, ['hash-object', '-w', '--stdin', '--no-filters'], { input: buf });
 
@@ -72,6 +78,7 @@ export function buildImportTree(repo, tag) {
   let renamedFiles = 0;
   let renamedRefs = 0;
   const lines = [];
+  removeIndex();
   try {
     for (const entry of listTree(repo, commit)) {
       if (entry.path === MARKETPLACE) continue;
@@ -107,8 +114,7 @@ export function buildImportTree(repo, tag) {
     const tree = git(repo, ['write-tree'], { env });
     return { tree, files, renamedFiles, renamedRefs };
   } finally {
-    rmSync(indexFile, { force: true });
-    rmSync(`${indexFile}.lock`, { force: true });
+    removeIndex();
   }
 }
 
